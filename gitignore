@@ -1,0 +1,64 @@
+# ---- Secrets / environment ----
+# Transcription tools often use API keys (OpenAI, AssemblyAI, etc.).
+# Never commit these.
+.env
+.env.*
+!.env.example
+*.key
+secrets.*
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# ---- Audio / large media (usually too big for git) ----
+# Podcast source files. Un-ignore a samples folder below if you want a
+# small test clip in the repo.
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.opus
+*.wma
+# !samples/example.mp3
+
+# ---- Local ML models (if you run Whisper or similar locally) ----
+# Uncomment if you download model weights into the repo.
+# models/
+# *.pt
+# *.bin
+# *.onnx
+
+# ---- Generated output ----
+# NOTE: your actual transcripts (.txt/.srt/.vtt) are probably the point
+# of this project, so they are NOT ignored by default. If you generate
+# them into a throwaway folder, ignore just that folder here instead:
+# output/
+# tmp/
+*.log
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Jupyter ----
+.ipynb_checkpoints/

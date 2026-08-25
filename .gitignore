@@ -46,6 +46,12 @@ ENV/
 # *.bin
 # *.onnx
 
+# ---- Local database / runtime data ----
+*.db
+*.sqlite
+*.sqlite3
+/data/
+
 # ---- Generated output ----
 # NOTE: your actual transcripts (.txt/.srt/.vtt) are probably the point
 # of this project, so they are NOT ignored by default. If you generate

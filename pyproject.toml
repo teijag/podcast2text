@@ -1,0 +1,19 @@
+[project]
+name = "podcast2text"
+version = "0.1.0"
+description = "Local backend for a browser extension that transcribes YouTube videos with a synced, bookmarkable transcript."
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "yt-dlp>=2024.8.6",
+    "faster-whisper>=1.0.3",
+    "pydantic>=2.8",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

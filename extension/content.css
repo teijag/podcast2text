@@ -1,0 +1,258 @@
+#p2t-panel {
+  background: #161616;
+  border: 1px solid #2c2c2c;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  font-family: "Roboto", "YouTube Sans", Arial, sans-serif;
+  color: #f1f1f1;
+}
+
+.p2t-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #2c2c2c;
+}
+
+.p2t-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #F2B33D;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.p2t-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.p2t-body {
+  padding: 16px;
+}
+
+.p2t-transcribe-btn {
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  background: #F2B33D;
+  color: #0f0f0f;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.p2t-transcribe-btn:hover {
+  background: #f6c565;
+}
+
+.p2t-status {
+  font-size: 13px;
+  color: #b0b0b0;
+  line-height: 1.5;
+}
+
+.p2t-error {
+  color: #e8846b;
+}
+
+.p2t-tabs {
+  display: flex;
+  border-bottom: 1px solid #2c2c2c;
+  margin: 0 16px 12px 16px;
+}
+
+.p2t-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 13px;
+  color: #8a8a8a;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.p2t-tab--active {
+  color: #f1f1f1;
+  font-weight: 500;
+  border-bottom-color: #F2B33D;
+}
+
+.p2t-search {
+  height: 32px;
+  margin: 0 16px 10px 16px;
+  background: #1f1f1f;
+  border: 1px solid #2c2c2c;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+}
+
+.p2t-search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #f1f1f1;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.p2t-search-input::placeholder {
+  color: #717171;
+}
+
+.p2t-list {
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 4px 8px 12px 8px;
+}
+
+.p2t-line {
+  display: flex;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.p2t-line:hover {
+  background: #1f1f1f;
+}
+
+.p2t-line-time {
+  width: 40px;
+  flex-shrink: 0;
+  font-family: "Roboto Mono", monospace;
+  font-size: 11.5px;
+  color: #717171;
+  padding-top: 1px;
+}
+
+.p2t-line-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #b0b0b0;
+}
+
+.p2t-line--active {
+  background: rgba(242, 179, 61, 0.14);
+}
+
+.p2t-line--active .p2t-line-time {
+  color: #F2B33D;
+  font-weight: 500;
+}
+
+.p2t-line--active .p2t-line-text {
+  color: #f1f1f1;
+  font-weight: 500;
+}
+
+.p2t-bm-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8a8a8a;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.p2t-line:hover .p2t-bm-icon {
+  opacity: 1;
+}
+
+.p2t-bm-icon:hover {
+  color: #f1f1f1;
+}
+
+.p2t-line--bookmarked .p2t-bm-icon {
+  opacity: 1;
+  color: #F2B33D;
+}
+
+.p2t-line-comment {
+  margin: -2px 8px 6px 58px;
+  padding: 6px 10px;
+  background: rgba(242, 179, 61, 0.08);
+  border-left: 2px solid #F2B33D;
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #d8b878;
+  white-space: pre-wrap;
+}
+
+.p2t-line--hidden {
+  display: none;
+}
+
+.p2t-bm-popover {
+  margin: 4px 8px 10px 8px;
+  padding: 12px;
+  background: #202020;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+}
+
+.p2t-bm-input {
+  width: 100%;
+  min-height: 52px;
+  resize: vertical;
+  background: #161616;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #f1f1f1;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.p2t-bm-input::placeholder {
+  color: #6f6f6f;
+}
+
+.p2t-bm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.p2t-bm-cancel,
+.p2t-bm-save {
+  border: none;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.p2t-bm-cancel {
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  color: #c0c0c0;
+}
+
+.p2t-bm-save {
+  background: #F2B33D;
+  color: #0f0f0f;
+  font-weight: 600;
+}

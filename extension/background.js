@@ -1,0 +1,69 @@
+const BACKEND = 'http://localhost:8765';
+
+async function getTranscript(videoId) {
+  const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/transcript`);
+  if (res.status === 404) return { ok: false, notFound: true };
+  if (!res.ok) return { ok: false, error: `Backend error ${res.status}` };
+  return { ok: true, data: await res.json() };
+}
+
+async function transcribe(url) {
+  const res = await fetch(`${BACKEND}/transcribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, error: body.detail || `Backend error ${res.status}` };
+  }
+  return { ok: true, data: await res.json() };
+}
+
+async function listBookmarks(videoId) {
+  const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/bookmarks`);
+  if (!res.ok) return { ok: false, error: `Backend error ${res.status}` };
+  return { ok: true, data: await res.json() };
+}
+
+async function createBookmark(videoId, timestampSeconds, comment) {
+  const res = await fetch(`${BACKEND}/bookmarks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_id: videoId, timestamp_seconds: timestampSeconds, comment }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, error: body.detail || `Backend error ${res.status}` };
+  }
+  return { ok: true, data: await res.json() };
+}
+
+async function deleteBookmark(bookmarkId) {
+  const res = await fetch(`${BACKEND}/bookmarks/${encodeURIComponent(bookmarkId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) return { ok: false, error: `Backend error ${res.status}` };
+  return { ok: true };
+}
+
+chrome.action.onClicked.addListener(() => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const handler =
+    message.type === 'GET_TRANSCRIPT' ? getTranscript(message.videoId) :
+    message.type === 'TRANSCRIBE' ? transcribe(message.url) :
+    message.type === 'LIST_BOOKMARKS' ? listBookmarks(message.videoId) :
+    message.type === 'CREATE_BOOKMARK' ? createBookmark(message.videoId, message.timestampSeconds, message.comment) :
+    message.type === 'DELETE_BOOKMARK' ? deleteBookmark(message.bookmarkId) :
+    null;
+
+  if (!handler) return false;
+
+  handler
+    .then(sendResponse)
+    .catch((err) => sendResponse({ ok: false, error: String(err) }));
+  return true; // keep the message channel open for the async response
+});

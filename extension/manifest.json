@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "podcast2text",
+  "version": "0.1.0",
+  "description": "Timestamped transcript, bookmarks, and translation for YouTube videos.",
+  "host_permissions": ["http://localhost:8765/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/watch*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "podcast2text"
+  }
+}

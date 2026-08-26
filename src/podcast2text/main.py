@@ -5,7 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import downloader, transcriber
 from .db import get_connection, init_db
-from .schemas import TranscribeRequest, TranscriptResponse, TranscriptSegment, Video
+from .schemas import (
+    Bookmark,
+    BookmarkCreate,
+    TranscribeRequest,
+    TranscriptResponse,
+    TranscriptSegment,
+    Video,
+    VideoSummary,
+)
 
 app = FastAPI(title="podcast2text")
 
@@ -82,12 +90,86 @@ def transcribe_video(req: TranscribeRequest) -> TranscriptResponse:
     return result
 
 
+@app.get("/videos", response_model=list[VideoSummary])
+def list_videos() -> list[VideoSummary]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT v.*, COUNT(b.id) AS bookmark_count
+            FROM videos v
+            LEFT JOIN bookmarks b ON b.video_id = v.id
+            WHERE v.status = 'done'
+            GROUP BY v.id
+            ORDER BY v.created_at DESC
+            """
+        ).fetchall()
+    return [
+        VideoSummary(
+            id=r["id"],
+            url=r["url"],
+            title=r["title"],
+            channel=r["channel"],
+            duration_seconds=r["duration_seconds"],
+            status=r["status"],
+            bookmark_count=r["bookmark_count"],
+        )
+        for r in rows
+    ]
+
+
 @app.get("/videos/{video_id}/transcript", response_model=TranscriptResponse)
 def get_transcript(video_id: str) -> TranscriptResponse:
     result = _load_transcript(video_id)
     if result is None:
         raise HTTPException(status_code=404, detail="No transcript for this video")
     return result
+
+
+@app.post("/bookmarks", response_model=Bookmark)
+def create_bookmark(req: BookmarkCreate) -> Bookmark:
+    with get_connection() as conn:
+        video_exists = conn.execute(
+            "SELECT 1 FROM videos WHERE id = ?", (req.video_id,)
+        ).fetchone()
+        if video_exists is None:
+            raise HTTPException(status_code=404, detail="Unknown video")
+        cursor = conn.execute(
+            "INSERT INTO bookmarks (video_id, timestamp_seconds, comment) VALUES (?, ?, ?)",
+            (req.video_id, req.timestamp_seconds, req.comment),
+        )
+        row = conn.execute(
+            "SELECT * FROM bookmarks WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()
+    return _bookmark_from_row(row)
+
+
+@app.get("/videos/{video_id}/bookmarks", response_model=list[Bookmark])
+def list_bookmarks(video_id: str) -> list[Bookmark]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM bookmarks WHERE video_id = ? ORDER BY timestamp_seconds",
+            (video_id,),
+        ).fetchall()
+    return [_bookmark_from_row(r) for r in rows]
+
+
+@app.delete("/bookmarks/{bookmark_id}")
+def delete_bookmark(bookmark_id: int) -> dict:
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM bookmarks WHERE id = ?", (bookmark_id,))
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown bookmark")
+    return {"status": "ok"}
+
+
+def _bookmark_from_row(row) -> Bookmark:
+    return Bookmark(
+        id=row["id"],
+        video_id=row["video_id"],
+        timestamp_seconds=row["timestamp_seconds"],
+        comment=row["comment"],
+        created_at=row["created_at"],
+    )
 
 
 def _video_id_from_url(url: str) -> str:

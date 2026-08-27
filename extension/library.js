@@ -1,5 +1,11 @@
 const BACKEND = 'http://localhost:8765';
 
+// CJK scripts don't use spaces between words/phrases, unlike Latin ones —
+// used to decide whether a space belongs where two merged sentences meet.
+function isCJK(ch) {
+  return /[一-鿿。！？，、」』]/.test(ch);
+}
+
 const PLAY_ICON = `
   <svg class="lib-play-icon" width="22" height="22" viewBox="0 0 24 24" fill="rgba(255,255,255,0.5)">
     <polygon points="8 5 19 12 8 19"></polygon>
@@ -33,33 +39,52 @@ const THUMB_GRADIENTS = [
 ];
 
 const PARAGRAPH_GAP_SECONDS = 1.5; // silence gap that starts a new paragraph
+const SENTENCE_GAP_SECONDS = 0.4; // silence gap that starts a new sentence, absent punctuation
+const MAX_SENTENCE_DURATION_SECONDS = 20; // beyond this, a "sentence" reads as an ungranular block
 const MAX_SENTENCES_PER_PARAGRAPH = 5; // safety cap for continuous speech with no pauses
-const SENTENCE_BOUNDARY_RE = /[.!?][)"'”]?(?=\s|$)/g;
+// Latin .!? need a following space to count (guards against false splits on
+// decimals like "3.14"); CJK 。！？ don't — Chinese text has no spaces
+// between sentences at all, so a following CJK character counts too.
+const SENTENCE_BOUNDARY_RE = /[.!?。！？][)"'”」』]?(?=\s|$|[一-鿿])/g;
 
 // Whisper's segment boundaries are cut by audio timing, not grammar — a "?"
 // can trail into the START of the next segment rather than ending the
 // current one, so checking each segment's own ending misses most sentences.
-// Scan for sentence-ending punctuation across the combined text instead,
-// then map each resulting sentence back to the segments (and timestamps)
-// it overlaps.
+// Scan for sentence-ending punctuation across the combined text, and ALSO
+// split on any real timing gap between segments — some content comes back
+// from Whisper with little or no punctuation at all (observed: 2 punctuated
+// segments out of 564 for one video), in which case punctuation alone would
+// collapse nearly the whole transcript into a couple of giant blocks even
+// though the audio has plenty of audible pauses to split on instead.
+// Even combined, punctuation and gaps can both go missing for a long
+// stretch (a long monologue with no punctuation and no pause) — any
+// resulting "sentence" that's still too long to read as one line gets
+// exploded back into its own raw segments rather than staying one block.
 function groupIntoSentences(segments) {
   if (segments.length === 0) return [];
 
   let text = '';
-  const ranges = []; // {start, end (seconds), charStart, charEnd}
+  const ranges = []; // {seg, start, end (seconds), charStart, charEnd}
   for (const seg of segments) {
     if (text.length > 0) text += ' ';
     const charStart = text.length;
     const segText = seg.text.trim();
     text += segText;
-    ranges.push({ start: seg.start, end: seg.end, charStart, charEnd: charStart + segText.length });
+    ranges.push({ seg, start: seg.start, end: seg.end, charStart, charEnd: charStart + segText.length });
   }
 
-  const boundaries = [];
+  const boundarySet = new Set();
   let match;
   while ((match = SENTENCE_BOUNDARY_RE.exec(text))) {
-    boundaries.push(match.index + match[0].length);
+    boundarySet.add(match.index + match[0].length);
   }
+  for (let i = 1; i < ranges.length; i++) {
+    if (ranges[i].start - ranges[i - 1].end >= SENTENCE_GAP_SECONDS) {
+      boundarySet.add(ranges[i - 1].charEnd);
+    }
+  }
+
+  const boundaries = Array.from(boundarySet).sort((a, b) => a - b);
   if (boundaries.length === 0 || boundaries[boundaries.length - 1] < text.length) {
     boundaries.push(text.length);
   }
@@ -69,12 +94,20 @@ function groupIntoSentences(segments) {
   for (const charEnd of boundaries) {
     const covered = ranges.filter((r) => r.charStart < charEnd && r.charEnd > charStart);
     if (covered.length > 0) {
-      sentences.push({
-        start: covered[0].start,
-        end: covered[covered.length - 1].end,
-        text: text.slice(charStart, charEnd).trim().replace(/\s+([.,!?])/g, '$1'),
-        segmentStarts: covered.map((r) => r.start),
-      });
+      const start = covered[0].start;
+      const end = covered[covered.length - 1].end;
+      if (covered.length > 1 && end - start > MAX_SENTENCE_DURATION_SECONDS) {
+        for (const r of covered) {
+          sentences.push({ start: r.seg.start, end: r.seg.end, text: r.seg.text.trim(), segmentStarts: [r.seg.start] });
+        }
+      } else {
+        sentences.push({
+          start,
+          end,
+          text: text.slice(charStart, charEnd).trim().replace(/\s+([.,!?。！？，])/g, '$1'),
+          segmentStarts: covered.map((r) => r.start),
+        });
+      }
     }
     charStart = charEnd;
   }
@@ -282,19 +315,19 @@ function renderReading() {
   const bodyHtml = paragraphs
     .map((group) => {
       const notes = [];
-      const text = group
-        .map((sent) => {
-          const bm = sent.segmentStarts.map((s) => bookmarkBySegStart.get(s)).find(Boolean);
-          if (bm) notes.push(bm);
-          const words = escapeHtml(sent.text);
-          return `
-            <span class="rd-seg-wrap ${bm ? 'rd-seg-wrap--bookmarked' : ''}" data-start="${sent.start}" data-bookmark-id="${bm ? bm.id : ''}">
-              <span class="${bm ? 'rd-highlight' : ''}">${words}</span>
-              <button class="rd-bm-icon" type="button" title="${bm ? 'Edit note' : 'Add a note'}">${bm ? BOOKMARK_ICON_FILLED : BOOKMARK_ICON_OUTLINE}</button>
-            </span>
-          `;
-        })
-        .join(' ');
+      let text = '';
+      group.forEach((sent, i) => {
+        const bm = sent.segmentStarts.map((s) => bookmarkBySegStart.get(s)).find(Boolean);
+        if (bm) notes.push(bm);
+        const words = escapeHtml(sent.text);
+        if (i > 0) text += (isCJK(group[i - 1].text.slice(-1)) || isCJK(sent.text.charAt(0))) ? '' : ' ';
+        text += `
+          <span class="rd-seg-wrap ${bm ? 'rd-seg-wrap--bookmarked' : ''}" data-start="${sent.start}" data-bookmark-id="${bm ? bm.id : ''}">
+            <span class="${bm ? 'rd-highlight' : ''}">${words}</span>
+            <button class="rd-bm-icon" type="button" title="${bm ? 'Edit note' : 'Add a note'}">${bm ? BOOKMARK_ICON_FILLED : BOOKMARK_ICON_OUTLINE}</button>
+          </span>
+        `;
+      });
       const noteHtml = notes
         .map(
           (bm) =>

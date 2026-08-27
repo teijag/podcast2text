@@ -1,11 +1,48 @@
 #p2t-panel {
-  background: #161616;
-  border: 1px solid #2c2c2c;
+  --p2t-bg: #161616;
+  --p2t-bg-2: #1f1f1f;
+  --p2t-bg-3: #202020;
+  --p2t-border: #2c2c2c;
+  --p2t-border-2: #3a3a3a;
+  --p2t-text: #f1f1f1;
+  --p2t-text-secondary: #b0b0b0;
+  --p2t-text-tertiary: #8a8a8a;
+  --p2t-text-quaternary: #717171;
+  --p2t-accent: #F2B33D;
+  --p2t-accent-hover: #f6c565;
+  --p2t-accent-tint: rgba(242, 179, 61, 0.14);
+  --p2t-accent-tint-soft: rgba(242, 179, 61, 0.08);
+  --p2t-on-accent: #0f0f0f;
+  --p2t-comment-text: #d8b878;
+  --p2t-cancel-text: #c0c0c0;
+  --p2t-error: #e8846b;
+
+  background: var(--p2t-bg);
+  border: 1px solid var(--p2t-border);
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 16px;
   font-family: "Roboto", "YouTube Sans", Arial, sans-serif;
-  color: #f1f1f1;
+  color: var(--p2t-text);
+}
+
+#p2t-panel.p2t-light {
+  --p2t-bg: #ffffff;
+  --p2t-bg-2: #f5f5f5;
+  --p2t-bg-3: #f0f0f0;
+  --p2t-border: #e0e0e0;
+  --p2t-border-2: #d0d0d0;
+  --p2t-text: #0f0f0f;
+  --p2t-text-secondary: #3d3d3d;
+  --p2t-text-tertiary: #606060;
+  --p2t-text-quaternary: #757575;
+  --p2t-accent: #C98F1F;
+  --p2t-accent-hover: #b57c15;
+  --p2t-accent-tint: rgba(201, 143, 31, 0.12);
+  --p2t-accent-tint-soft: rgba(201, 143, 31, 0.07);
+  --p2t-comment-text: #8a5a1a;
+  --p2t-cancel-text: #5a5a5a;
+  --p2t-error: #b3382a;
 }
 
 .p2t-header {
@@ -13,14 +50,14 @@
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--p2t-border);
 }
 
 .p2t-badge {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: #F2B33D;
+  background: var(--p2t-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -30,6 +67,24 @@
 .p2t-title {
   font-size: 14px;
   font-weight: 600;
+  flex: 1;
+}
+
+.p2t-library-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--p2t-text-tertiary);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.p2t-library-btn:hover {
+  color: var(--p2t-text);
 }
 
 .p2t-body {
@@ -41,30 +96,30 @@
   padding: 10px 16px;
   border-radius: 999px;
   border: none;
-  background: #F2B33D;
-  color: #0f0f0f;
+  background: var(--p2t-accent);
+  color: var(--p2t-on-accent);
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .p2t-transcribe-btn:hover {
-  background: #f6c565;
+  background: var(--p2t-accent-hover);
 }
 
 .p2t-status {
   font-size: 13px;
-  color: #b0b0b0;
+  color: var(--p2t-text-secondary);
   line-height: 1.5;
 }
 
 .p2t-error {
-  color: #e8846b;
+  color: var(--p2t-error);
 }
 
 .p2t-tabs {
   display: flex;
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--p2t-border);
   margin: 0 16px 12px 16px;
 }
 
@@ -73,7 +128,7 @@
   text-align: center;
   padding: 8px 0;
   font-size: 13px;
-  color: #8a8a8a;
+  color: var(--p2t-text-tertiary);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -81,16 +136,16 @@
 }
 
 .p2t-tab--active {
-  color: #f1f1f1;
+  color: var(--p2t-text);
   font-weight: 500;
-  border-bottom-color: #F2B33D;
+  border-bottom-color: var(--p2t-accent);
 }
 
 .p2t-search {
   height: 32px;
   margin: 0 16px 10px 16px;
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--p2t-bg-2);
+  border: 1px solid var(--p2t-border);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -102,13 +157,13 @@
   background: none;
   border: none;
   outline: none;
-  color: #f1f1f1;
+  color: var(--p2t-text);
   font-family: inherit;
   font-size: 12px;
 }
 
 .p2t-search-input::placeholder {
-  color: #717171;
+  color: var(--p2t-text-quaternary);
 }
 
 .p2t-list {
@@ -126,7 +181,7 @@
 }
 
 .p2t-line:hover {
-  background: #1f1f1f;
+  background: var(--p2t-bg-2);
 }
 
 .p2t-line-time {
@@ -134,7 +189,7 @@
   flex-shrink: 0;
   font-family: "Roboto Mono", monospace;
   font-size: 11.5px;
-  color: #717171;
+  color: var(--p2t-text-quaternary);
   padding-top: 1px;
 }
 
@@ -142,20 +197,20 @@
   flex: 1;
   font-size: 13px;
   line-height: 1.5;
-  color: #b0b0b0;
+  color: var(--p2t-text-secondary);
 }
 
 .p2t-line--active {
-  background: rgba(242, 179, 61, 0.14);
+  background: var(--p2t-accent-tint);
 }
 
 .p2t-line--active .p2t-line-time {
-  color: #F2B33D;
+  color: var(--p2t-accent);
   font-weight: 500;
 }
 
 .p2t-line--active .p2t-line-text {
-  color: #f1f1f1;
+  color: var(--p2t-text);
   font-weight: 500;
 }
 
@@ -167,7 +222,7 @@
   background: none;
   border: none;
   padding: 0;
-  color: #8a8a8a;
+  color: var(--p2t-text-tertiary);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease;
@@ -178,23 +233,23 @@
 }
 
 .p2t-bm-icon:hover {
-  color: #f1f1f1;
+  color: var(--p2t-text);
 }
 
 .p2t-line--bookmarked .p2t-bm-icon {
   opacity: 1;
-  color: #F2B33D;
+  color: var(--p2t-accent);
 }
 
 .p2t-line-comment {
   margin: -2px 8px 6px 58px;
   padding: 6px 10px;
-  background: rgba(242, 179, 61, 0.08);
-  border-left: 2px solid #F2B33D;
+  background: var(--p2t-accent-tint-soft);
+  border-left: 2px solid var(--p2t-accent);
   border-radius: 0 6px 6px 0;
   font-size: 12px;
   line-height: 1.5;
-  color: #d8b878;
+  color: var(--p2t-comment-text);
   white-space: pre-wrap;
 }
 
@@ -205,8 +260,8 @@
 .p2t-bm-popover {
   margin: 4px 8px 10px 8px;
   padding: 12px;
-  background: #202020;
-  border: 1px solid #3a3a3a;
+  background: var(--p2t-bg-3);
+  border: 1px solid var(--p2t-border-2);
   border-radius: 10px;
 }
 
@@ -214,11 +269,11 @@
   width: 100%;
   min-height: 52px;
   resize: vertical;
-  background: #161616;
-  border: 1px solid #3a3a3a;
+  background: var(--p2t-bg);
+  border: 1px solid var(--p2t-border-2);
   border-radius: 8px;
   padding: 8px 10px;
-  color: #f1f1f1;
+  color: var(--p2t-text);
   font-family: inherit;
   font-size: 12.5px;
   line-height: 1.5;
@@ -226,7 +281,7 @@
 }
 
 .p2t-bm-input::placeholder {
-  color: #6f6f6f;
+  color: var(--p2t-text-quaternary);
 }
 
 .p2t-bm-actions {
@@ -247,12 +302,12 @@
 
 .p2t-bm-cancel {
   background: transparent;
-  border: 1px solid #3a3a3a;
-  color: #c0c0c0;
+  border: 1px solid var(--p2t-border-2);
+  color: var(--p2t-cancel-text);
 }
 
 .p2t-bm-save {
-  background: #F2B33D;
-  color: #0f0f0f;
+  background: var(--p2t-accent);
+  color: var(--p2t-on-accent);
   font-weight: 600;
 }

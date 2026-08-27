@@ -20,8 +20,58 @@ const BOOKMARK_ICON_FILLED = `
 
 // Map<segment start seconds, bookmark {id, comment}> for the currently rendered transcript.
 let bookmarksByStart = new Map();
+// Map<raw Whisper segment start, the sentence line's own start> — a bookmark
+// may reference any segment within a sentence, not just the sentence's first.
+let sentenceStartBySegStart = new Map();
 let panelTab = 'transcript'; // 'transcript' | 'bookmarks'
 let searchQuery = '';
+
+const SENTENCE_BOUNDARY_RE = /[.!?][)"'”]?(?=\s|$)/g;
+
+// Whisper's segment boundaries are cut by audio timing, not grammar — a "?"
+// can trail into the START of the next segment rather than ending the
+// current one, so checking each segment's own ending misses most sentences.
+// Scan for sentence-ending punctuation across the combined text instead,
+// then map each resulting sentence back to the segments (and timestamps)
+// it overlaps.
+function groupIntoSentences(segments) {
+  if (segments.length === 0) return [];
+
+  let text = '';
+  const ranges = []; // {start, end (seconds), charStart, charEnd}
+  for (const seg of segments) {
+    if (text.length > 0) text += ' ';
+    const charStart = text.length;
+    const segText = seg.text.trim();
+    text += segText;
+    ranges.push({ start: seg.start, end: seg.end, charStart, charEnd: charStart + segText.length });
+  }
+
+  const boundaries = [];
+  let match;
+  while ((match = SENTENCE_BOUNDARY_RE.exec(text))) {
+    boundaries.push(match.index + match[0].length);
+  }
+  if (boundaries.length === 0 || boundaries[boundaries.length - 1] < text.length) {
+    boundaries.push(text.length);
+  }
+
+  const sentences = [];
+  let charStart = 0;
+  for (const charEnd of boundaries) {
+    const covered = ranges.filter((r) => r.charStart < charEnd && r.charEnd > charStart);
+    if (covered.length > 0) {
+      sentences.push({
+        start: covered[0].start,
+        end: covered[covered.length - 1].end,
+        text: text.slice(charStart, charEnd).trim().replace(/\s+([.,!?])/g, '$1'),
+        segmentStarts: covered.map((r) => r.start),
+      });
+    }
+    charStart = charEnd;
+  }
+  return sentences;
+}
 
 let currentVideoId = null;
 let panelEl = null;
@@ -108,6 +158,16 @@ function getVideoId() {
   return new URLSearchParams(location.search).get('v');
 }
 
+function fireAndForget(message) {
+  // No callback registered, so there's nothing for Chrome to complain about
+  // if this tab navigates away before the background script responds.
+  try {
+    chrome.runtime.sendMessage(message);
+  } catch (_e) {
+    // Extension context can be invalidated (e.g. reload) mid-navigation; harmless here.
+  }
+}
+
 function backendMessage(message) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(message, (response) => {
@@ -118,6 +178,14 @@ function backendMessage(message) {
       resolve(response);
     });
   });
+}
+
+function isYouTubeDark() {
+  return document.documentElement.hasAttribute('dark');
+}
+
+function applyTheme() {
+  if (panelEl) panelEl.classList.toggle('p2t-light', !isYouTubeDark());
 }
 
 function removePanel() {
@@ -134,13 +202,23 @@ function ensurePanel() {
   if (!secondary) return null;
   panelEl = document.createElement('div');
   panelEl.id = 'p2t-panel';
+  applyTheme();
   panelEl.innerHTML = `
     <div class="p2t-header">
       <div class="p2t-badge">${TRANSCRIPT_ICON}</div>
       <span class="p2t-title">Transcript</span>
+      <button class="p2t-library-btn" type="button" title="Open Library">
+        Library
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline>
+        </svg>
+      </button>
     </div>
     <div class="p2t-body"></div>
   `;
+  panelEl.querySelector('.p2t-library-btn').addEventListener('click', () => {
+    fireAndForget({ type: 'OPEN_LIBRARY' });
+  });
   secondary.prepend(panelEl);
   return panelEl;
 }
@@ -171,17 +249,21 @@ function renderError(message) {
 }
 
 function renderReady(transcript) {
-  const segments = transcript.segments;
+  const sentences = groupIntoSentences(transcript.segments);
   bookmarksByStart = new Map();
+  sentenceStartBySegStart = new Map();
+  for (const sent of sentences) {
+    for (const segStart of sent.segmentStarts) sentenceStartBySegStart.set(segStart, sent.start);
+  }
   panelTab = 'transcript';
   searchQuery = '';
 
-  const lines = segments
+  const lines = sentences
     .map(
-      (seg, i) => `
-      <div class="p2t-line" data-index="${i}" data-start="${seg.start}">
-        <span class="p2t-line-time">${formatTimestamp(seg.start)}</span>
-        <span class="p2t-line-text">${escapeHtml(seg.text)}</span>
+      (sent, i) => `
+      <div class="p2t-line" data-index="${i}" data-start="${sent.start}">
+        <span class="p2t-line-time">${formatTimestamp(sent.start)}</span>
+        <span class="p2t-line-text">${escapeHtml(sent.text)}</span>
         <button class="p2t-bm-icon" type="button" title="Bookmark this moment">${BOOKMARK_ICON_OUTLINE}</button>
       </div>
     `
@@ -226,8 +308,9 @@ function renderReady(transcript) {
     applyLineFilters(body);
   });
 
-  startVideoSync(currentVideoId, segments);
+  startVideoSync(currentVideoId, sentences);
   loadBookmarks(currentVideoId, body);
+  fireAndForget({ type: 'MARK_VIEWED', videoId: currentVideoId });
 }
 
 function applyLineFilters(body) {
@@ -260,7 +343,8 @@ async function loadBookmarks(videoId, body) {
   if (videoId !== currentVideoId || !res.ok) return;
   for (const bm of res.data) {
     bookmarksByStart.set(bm.timestamp_seconds, bm);
-    const line = list.querySelector(`.p2t-line[data-start="${bm.timestamp_seconds}"]`);
+    const lineStart = sentenceStartBySegStart.get(bm.timestamp_seconds);
+    const line = lineStart != null ? list.querySelector(`.p2t-line[data-start="${lineStart}"]`) : null;
     if (line) markLineBookmarked(line, bm);
   }
   updateBookmarkCount(body);
@@ -360,7 +444,9 @@ async function removeBookmark(lineEl) {
   const res = await backendMessage({ type: 'DELETE_BOOKMARK', bookmarkId: Number(bookmarkId) });
   if (videoId !== currentVideoId) return; // navigated away while deleting
   if (res.ok) {
-    bookmarksByStart.delete(Number(lineEl.dataset.start));
+    for (const [key, bm] of bookmarksByStart) {
+      if (String(bm.id) === bookmarkId) bookmarksByStart.delete(key);
+    }
     markLineUnbookmarked(lineEl);
     const body = panelEl && panelEl.querySelector('.p2t-body');
     if (body) {
@@ -412,7 +498,33 @@ function onPossibleNavigation() {
 }
 
 document.addEventListener('yt-navigate-finish', onPossibleNavigation);
-// Fallback in case yt-navigate-finish doesn't fire, or #secondary-inner
-// wasn't in the DOM yet on the first attempt.
+
+// YouTube is a heavy client-rendered SPA: on a fresh page load the content
+// script can run before YouTube's own JS has built out #secondary-inner, so
+// the very first check can miss it. React the instant it (or anything else
+// relevant) gets added, instead of waiting on the poll below.
+let checkScheduled = false;
+function scheduleCheck() {
+  if (checkScheduled) return;
+  checkScheduled = true;
+  requestAnimationFrame(() => {
+    checkScheduled = false;
+    onPossibleNavigation();
+  });
+}
+new MutationObserver(scheduleCheck).observe(document.documentElement, {
+  childList: true,
+  subtree: true,
+});
+
+// Slow fallback in case the observer ever misses a change.
 setInterval(onPossibleNavigation, 1500);
 onPossibleNavigation();
+
+// Match YouTube's own light/dark theme, and keep matching it live if the
+// user toggles it from YouTube's settings menu while the page stays open.
+new MutationObserver(applyTheme).observe(document.documentElement, {
+  attributes: true,
+  attributeFilter: ['dark'],
+});
+applyTheme();

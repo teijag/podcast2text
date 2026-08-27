@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import time
+import urllib.request
+from importlib.metadata import version as installed_version
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +16,29 @@ AUDIO_CACHE_DIR = DATA_DIR / "audio"
 
 MAX_ATTEMPTS = 3
 RETRY_DELAY_SECONDS = 5
+
+
+def check_yt_dlp_version() -> None:
+    """Warn (never raise) if yt-dlp is behind the latest PyPI release.
+
+    An outdated yt-dlp is the single most likely cause of real downloads
+    failing with HTTP 403 while metadata extraction still works fine —
+    see CLAUDE.md. Best-effort: any failure here (offline, PyPI hiccup) is
+    silently ignored so it never blocks startup.
+    """
+    try:
+        installed = installed_version("yt-dlp")
+        with urllib.request.urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=3) as resp:
+            latest = json.load(resp)["info"]["version"]
+        if installed != latest:
+            print(
+                f"[podcast2text] yt-dlp {installed} is installed, but {latest} is available. "
+                f"An outdated yt-dlp is the most common cause of YouTube downloads failing "
+                f"with 'HTTP Error 403' (even though metadata extraction still works). "
+                f"If downloads start failing, run: pip install --upgrade yt-dlp"
+            )
+    except Exception:
+        pass
 
 
 def download_audio(url: str) -> tuple[Path, dict[str, Any]]:

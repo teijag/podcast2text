@@ -8,6 +8,7 @@ from .db import get_connection, init_db
 from .schemas import (
     Bookmark,
     BookmarkCreate,
+    BookmarkUpdate,
     TranscribeRequest,
     TranscriptResponse,
     TranscriptSegment,
@@ -28,6 +29,7 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    downloader.check_yt_dlp_version()
 
 
 @app.get("/health")
@@ -112,9 +114,22 @@ def list_videos() -> list[VideoSummary]:
             duration_seconds=r["duration_seconds"],
             status=r["status"],
             bookmark_count=r["bookmark_count"],
+            last_viewed_at=r["last_viewed_at"],
+            created_at=r["created_at"],
         )
         for r in rows
     ]
+
+
+@app.post("/videos/{video_id}/viewed")
+def mark_video_viewed(video_id: str) -> dict:
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "UPDATE videos SET last_viewed_at = datetime('now') WHERE id = ?", (video_id,)
+        )
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown video")
+    return {"status": "ok"}
 
 
 @app.get("/videos/{video_id}/transcript", response_model=TranscriptResponse)
@@ -151,6 +166,18 @@ def list_bookmarks(video_id: str) -> list[Bookmark]:
             (video_id,),
         ).fetchall()
     return [_bookmark_from_row(r) for r in rows]
+
+
+@app.patch("/bookmarks/{bookmark_id}", response_model=Bookmark)
+def update_bookmark(bookmark_id: int, req: BookmarkUpdate) -> Bookmark:
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "UPDATE bookmarks SET comment = ? WHERE id = ?", (req.comment, bookmark_id)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Unknown bookmark")
+        row = conn.execute("SELECT * FROM bookmarks WHERE id = ?", (bookmark_id,)).fetchone()
+    return _bookmark_from_row(row)
 
 
 @app.delete("/bookmarks/{bookmark_id}")

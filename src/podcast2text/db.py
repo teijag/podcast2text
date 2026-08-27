@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS videos (
     duration_seconds REAL,
     status TEXT NOT NULL DEFAULT 'pending',
     error_message TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_viewed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS transcript_segments (
@@ -41,6 +42,14 @@ def init_db() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Idempotent ALTERs for columns added after a DB already existed."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
+    if "last_viewed_at" not in columns:
+        conn.execute("ALTER TABLE videos ADD COLUMN last_viewed_at TEXT")
 
 
 @contextmanager

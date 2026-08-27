@@ -33,6 +33,10 @@ class BookmarkCreate(BaseModel):
     comment: Optional[str] = None
 
 
+class BookmarkUpdate(BaseModel):
+    comment: Optional[str] = None
+
+
 class VideoSummary(BaseModel):
     id: str
     url: str
@@ -41,6 +45,8 @@ class VideoSummary(BaseModel):
     duration_seconds: Optional[float]
     status: str
     bookmark_count: int
+    last_viewed_at: Optional[str]
+    created_at: str
 
 
 class Bookmark(BaseModel):

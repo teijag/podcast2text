@@ -3,23 +3,41 @@
 <head>
   <meta charset="utf-8">
   <title>Library — podcast2text</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Carlito:ital,wght@0,400;0,700;1,400&display=swap">
   <link rel="stylesheet" href="library.css">
 </head>
 <body>
-  <div class="lib-header">
-    <div>
-      <div class="lib-title">Library</div>
-      <div class="lib-subtitle">All your transcribed videos and notes in one place.</div>
+  <div class="lib-page" id="lib-page-grid">
+    <div class="lib-header">
+      <div>
+        <div class="lib-title">Library</div>
+        <div class="lib-subtitle">All your transcribed videos and notes in one place.</div>
+      </div>
+      <div class="lib-search">
+        <input type="text" id="lib-search-input" placeholder="Search videos or notes">
+      </div>
     </div>
-    <div class="lib-search">
-      <input type="text" id="lib-search-input" placeholder="Search videos or notes">
+
+    <div class="lib-filters" id="lib-filters"></div>
+
+    <div class="lib-body">
+      <div class="lib-grid" id="lib-grid"></div>
     </div>
   </div>
 
-  <div class="lib-body">
-    <div class="lib-grid" id="lib-grid"></div>
-    <div class="lib-detail" id="lib-detail">
-      <div class="lib-empty">Select a video to see its bookmarks.</div>
+  <div class="lib-page" id="lib-page-reading" style="display: none;">
+    <div class="rd-topbar">
+      <div class="rd-back" id="rd-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        Back to Library
+      </div>
+      <div class="rd-open-video" id="rd-open-video">
+        Open video
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F2B33D" stroke-width="2" stroke-linecap="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
+      </div>
+    </div>
+    <div class="rd-scroll">
+      <div class="rd-article" id="rd-article"></div>
     </div>
   </div>
 

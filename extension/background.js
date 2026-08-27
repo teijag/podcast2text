@@ -47,17 +47,33 @@ async function deleteBookmark(bookmarkId) {
   return { ok: true };
 }
 
-chrome.action.onClicked.addListener(() => {
+async function markViewed(videoId) {
+  const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/viewed`, {
+    method: 'POST',
+  });
+  if (!res.ok) return { ok: false, error: `Backend error ${res.status}` };
+  return { ok: true };
+}
+
+function openLibrary() {
   chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
-});
+}
+
+chrome.action.onClicked.addListener(openLibrary);
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'OPEN_LIBRARY') {
+    openLibrary();
+    return false; // fire-and-forget, no response expected
+  }
+
   const handler =
     message.type === 'GET_TRANSCRIPT' ? getTranscript(message.videoId) :
     message.type === 'TRANSCRIBE' ? transcribe(message.url) :
     message.type === 'LIST_BOOKMARKS' ? listBookmarks(message.videoId) :
     message.type === 'CREATE_BOOKMARK' ? createBookmark(message.videoId, message.timestampSeconds, message.comment) :
     message.type === 'DELETE_BOOKMARK' ? deleteBookmark(message.bookmarkId) :
+    message.type === 'MARK_VIEWED' ? markViewed(message.videoId) :
     null;
 
   if (!handler) return false;

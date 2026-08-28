@@ -3,13 +3,16 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import downloader, transcriber
+from . import downloader, transcriber, translator
 from .db import get_connection, init_db
 from .schemas import (
     Bookmark,
     BookmarkCreate,
     BookmarkUpdate,
     TranscribeRequest,
+    TranslatedSegment,
+    TranslateRequest,
+    TranslateResponse,
     TranscriptResponse,
     TranscriptSegment,
     Video,
@@ -187,6 +190,46 @@ def delete_bookmark(bookmark_id: int) -> dict:
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Unknown bookmark")
     return {"status": "ok"}
+
+
+@app.post("/translate", response_model=TranslateResponse)
+def translate(req: TranslateRequest) -> TranslateResponse:
+    if not req.items:
+        return TranslateResponse(items=[])
+
+    with get_connection() as conn:
+        video_exists = conn.execute("SELECT 1 FROM videos WHERE id = ?", (req.video_id,)).fetchone()
+        if video_exists is None:
+            raise HTTPException(status_code=404, detail="Unknown video")
+
+        placeholders = ",".join("?" * len(req.items))
+        rows = conn.execute(
+            f"SELECT start_seconds, translated_text FROM translations "
+            f"WHERE video_id = ? AND start_seconds IN ({placeholders})",
+            (req.video_id, *[item.start for item in req.items]),
+        ).fetchall()
+    cache = {r["start_seconds"]: r["translated_text"] for r in rows}
+
+    to_translate = [item for item in req.items if item.start not in cache]
+    if to_translate:
+        results = translator.translate_batch([item.text for item in to_translate])
+        with get_connection() as conn:
+            for item, (src_lang, tgt_lang, translated) in zip(to_translate, results):
+                conn.execute(
+                    """
+                    INSERT INTO translations
+                        (video_id, start_seconds, source_lang, target_lang, source_text, translated_text)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(video_id, start_seconds, target_lang)
+                    DO UPDATE SET translated_text = excluded.translated_text
+                    """,
+                    (req.video_id, item.start, src_lang, tgt_lang, item.text, translated),
+                )
+                cache[item.start] = translated
+
+    return TranslateResponse(
+        items=[TranslatedSegment(start=item.start, translated_text=cache[item.start]) for item in req.items]
+    )
 
 
 def _bookmark_from_row(row) -> Bookmark:

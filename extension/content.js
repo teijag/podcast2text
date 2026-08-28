@@ -25,6 +25,9 @@ let bookmarksByStart = new Map();
 let sentenceStartBySegStart = new Map();
 let panelTab = 'transcript'; // 'transcript' | 'bookmarks'
 let searchQuery = '';
+// Map<sentence start seconds, translated text> for the currently rendered transcript.
+let translationsByStart = new Map();
+let translationsShown = false;
 
 const SENTENCE_GAP_SECONDS = 0.4; // silence gap that starts a new sentence, absent punctuation
 const MAX_SENTENCE_DURATION_SECONDS = 20; // beyond this, a "sentence" reads as an ungranular block
@@ -78,7 +81,12 @@ function groupIntoSentences(segments) {
   const sentences = [];
   let charStart = 0;
   for (const charEnd of boundaries) {
-    const covered = ranges.filter((r) => r.charStart < charEnd && r.charEnd > charStart);
+    // Assign each raw segment to exactly one sentence, by where it STARTS —
+    // not by any character overlap. A raw segment can straddle a sentence
+    // boundary (it has its own punctuation mid-segment), and an overlap
+    // test would then double-count it into both sentences, corrupting
+    // bookmark matching (the same bookmark would match both).
+    const covered = ranges.filter((r) => r.charStart >= charStart && r.charStart < charEnd);
     if (covered.length > 0) {
       const start = covered[0].start;
       const end = covered[covered.length - 1].end;
@@ -284,14 +292,19 @@ function renderReady(transcript) {
   }
   panelTab = 'transcript';
   searchQuery = '';
+  translationsByStart = new Map();
+  translationsShown = false;
 
   const lines = sentences
     .map(
       (sent, i) => `
       <div class="p2t-line" data-index="${i}" data-start="${sent.start}">
-        <span class="p2t-line-time">${formatTimestamp(sent.start)}</span>
-        <span class="p2t-line-text">${escapeHtml(sent.text)}</span>
-        <button class="p2t-bm-icon" type="button" title="Bookmark this moment">${BOOKMARK_ICON_OUTLINE}</button>
+        <div class="p2t-line-row">
+          <span class="p2t-line-time">${formatTimestamp(sent.start)}</span>
+          <span class="p2t-line-text">${escapeHtml(sent.text)}</span>
+          <button class="p2t-bm-icon" type="button" title="Bookmark this moment">${BOOKMARK_ICON_OUTLINE}</button>
+        </div>
+        <div class="p2t-line-translation" style="display:none"></div>
       </div>
     `
     )
@@ -301,6 +314,7 @@ function renderReady(transcript) {
     <div class="p2t-tabs">
       <button class="p2t-tab p2t-tab--active" data-tab="transcript">Transcript</button>
       <button class="p2t-tab" data-tab="bookmarks">Bookmarks &middot; <span class="p2t-bm-count">0</span></button>
+      <button class="p2t-translate-btn" type="button">Translate</button>
     </div>
     <div class="p2t-search">
       <input type="text" class="p2t-search-input" placeholder="Search transcript">
@@ -308,6 +322,10 @@ function renderReady(transcript) {
     <div class="p2t-list">${lines}</div>
   `);
   if (!body) return;
+
+  body.querySelector('.p2t-translate-btn').addEventListener('click', (e) => {
+    onTranslateClick(body, sentences, e.currentTarget);
+  });
 
   const list = body.querySelector('.p2t-list');
   list.addEventListener('click', (e) => {
@@ -338,6 +356,42 @@ function renderReady(transcript) {
   startVideoSync(currentVideoId, sentences);
   loadBookmarks(currentVideoId, body);
   fireAndForget({ type: 'MARK_VIEWED', videoId: currentVideoId });
+}
+
+async function onTranslateClick(body, sentences, btn) {
+  if (translationsShown) {
+    translationsShown = false;
+    body.querySelectorAll('.p2t-line-translation').forEach((el) => (el.style.display = 'none'));
+    btn.textContent = 'Translate';
+    return;
+  }
+  if (translationsByStart.size > 0) {
+    translationsShown = true;
+    body.querySelectorAll('.p2t-line-translation').forEach((el) => (el.style.display = ''));
+    btn.textContent = 'Hide translation';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Translating…';
+  const items = sentences.map((sent) => ({ start: sent.start, text: sent.text }));
+  const res = await backendMessage({ type: 'TRANSLATE', videoId: currentVideoId, items });
+  btn.disabled = false;
+  if (!res || !res.ok) {
+    btn.textContent = 'Translate';
+    return;
+  }
+
+  for (const t of res.data.items) translationsByStart.set(t.start, t.translated_text);
+  body.querySelectorAll('.p2t-line').forEach((lineEl) => {
+    const text = translationsByStart.get(Number(lineEl.dataset.start));
+    if (!text) return;
+    const el = lineEl.querySelector('.p2t-line-translation');
+    el.textContent = text;
+    el.style.display = '';
+  });
+  translationsShown = true;
+  btn.textContent = 'Hide translation';
 }
 
 function applyLineFilters(body) {

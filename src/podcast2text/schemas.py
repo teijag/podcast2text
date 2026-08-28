@@ -55,3 +55,22 @@ class Bookmark(BaseModel):
     timestamp_seconds: float
     comment: Optional[str]
     created_at: str
+
+
+class TranslateItem(BaseModel):
+    start: float
+    text: str
+
+
+class TranslateRequest(BaseModel):
+    video_id: str
+    items: list[TranslateItem]
+
+
+class TranslatedSegment(BaseModel):
+    start: float
+    translated_text: str
+
+
+class TranslateResponse(BaseModel):
+    items: list[TranslatedSegment]

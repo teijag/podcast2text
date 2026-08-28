@@ -92,7 +92,12 @@ function groupIntoSentences(segments) {
   const sentences = [];
   let charStart = 0;
   for (const charEnd of boundaries) {
-    const covered = ranges.filter((r) => r.charStart < charEnd && r.charEnd > charStart);
+    // Assign each raw segment to exactly one sentence, by where it STARTS —
+    // not by any character overlap. A raw segment can straddle a sentence
+    // boundary (it has its own punctuation mid-segment), and an overlap
+    // test would then double-count it into both sentences, corrupting
+    // bookmark matching (the same bookmark would match both).
+    const covered = ranges.filter((r) => r.charStart >= charStart && r.charStart < charEnd);
     if (covered.length > 0) {
       const start = covered[0].start;
       const end = covered[covered.length - 1].end;
@@ -139,6 +144,9 @@ let activeFilter = 'all'; // 'all' | 'unwatched'
 let readingVideoId = null;
 let readingVideo = null;
 let readingSegments = [];
+// Map<paragraph start seconds, translated text> for the currently rendered reading view.
+let translationsByStart = new Map();
+let translationsShown = false;
 
 function formatTimestamp(seconds) {
   const total = Math.max(0, Math.floor(seconds));
@@ -296,6 +304,8 @@ async function openReading(videoId) {
   const data = await res.json();
   readingVideo = data.video;
   readingSegments = data.segments;
+  translationsByStart = new Map();
+  translationsShown = false;
   renderReading();
 }
 
@@ -307,51 +317,163 @@ function renderReading() {
   // on any of a sentence's constituent segment starts, not just its first.
   const bookmarkBySegStart = new Map(bookmarks.map((b) => [b.timestamp_seconds, b]));
 
-  document.getElementById('rd-open-video').onclick = () => openVideoAt(video.id, null);
 
   const sentences = groupIntoSentences(readingSegments);
   const paragraphs = groupIntoParagraphs(sentences);
+  const allNotes = []; // collected in reading order, rendered in the right column
+  // {start, text} per sentence, for translation requests. NLLB is trained
+  // sentence-by-sentence and truncates when fed a whole multi-sentence
+  // paragraph as one block, so we translate at sentence granularity and
+  // join the results back into a paragraph for display below.
+  const sentenceItems = [];
 
   const bodyHtml = paragraphs
     .map((group) => {
-      const notes = [];
       let text = '';
+      let translatedText = '';
       group.forEach((sent, i) => {
+        sentenceItems.push({ start: sent.start, text: sent.text });
         const bm = sent.segmentStarts.map((s) => bookmarkBySegStart.get(s)).find(Boolean);
-        if (bm) notes.push(bm);
+        if (bm) allNotes.push(bm);
         const words = escapeHtml(sent.text);
-        if (i > 0) text += (isCJK(group[i - 1].text.slice(-1)) || isCJK(sent.text.charAt(0))) ? '' : ' ';
+        const joiner = i > 0 && !(isCJK(group[i - 1].text.slice(-1)) || isCJK(sent.text.charAt(0))) ? ' ' : '';
+        text += joiner;
         text += `
           <span class="rd-seg-wrap ${bm ? 'rd-seg-wrap--bookmarked' : ''}" data-start="${sent.start}" data-bookmark-id="${bm ? bm.id : ''}">
             <span class="${bm ? 'rd-highlight' : ''}">${words}</span>
             <button class="rd-bm-icon" type="button" title="${bm ? 'Edit note' : 'Add a note'}">${bm ? BOOKMARK_ICON_FILLED : BOOKMARK_ICON_OUTLINE}</button>
           </span>
         `;
+        const sentTranslation = translationsByStart.get(sent.start);
+        if (sentTranslation) translatedText += (translatedText ? ' ' : '') + sentTranslation;
       });
-      const noteHtml = notes
-        .map(
-          (bm) =>
-            `<div class="rd-note">${escapeHtml(bm.comment) || '<span class="rd-note-empty">No note yet</span>'}</div>`
-        )
-        .join('');
-      return `<p><span class="rd-para-time">${formatTimestamp(group[0].start)}</span>${text}</p>${noteHtml}`;
+      const paraStart = group[0].start;
+      const translationHtml = `
+        <div class="rd-para-translation" data-start="${paraStart}" style="display:${translationsShown ? '' : 'none'}">
+          ${escapeHtml(translatedText)}
+        </div>
+      `;
+      return (
+        `<p><button type="button" class="rd-para-time" data-start="${paraStart}">${formatTimestamp(paraStart)}</button>${text}</p>` +
+        translationHtml
+      );
     })
     .join('');
+
+  const notesHtml = allNotes.length
+    ? allNotes
+        .map(
+          (bm) => `
+        <div class="rd-note" data-bookmark-id="${bm.id}">
+          <span class="rd-note-time">${formatTimestamp(bm.timestamp_seconds)}</span>
+          <div class="rd-note-text">${escapeHtml(bm.comment) || '<span class="rd-note-empty">No note yet</span>'}</div>
+        </div>
+      `
+        )
+        .join('')
+    : `<div class="rd-notes-empty">Bookmark a sentence to see your notes here.</div>`;
 
   const byline = [video.channel, video.duration_seconds != null ? formatTimestamp(video.duration_seconds) : null, `${bookmarks.length} bookmark${bookmarks.length === 1 ? '' : 's'}`]
     .filter(Boolean)
     .join(' &middot; ');
 
   document.getElementById('rd-article').innerHTML = `
-    <div class="rd-title">${escapeHtml(video.title || video.id)}</div>
-    <div class="rd-byline">${byline}</div>
-    <div class="rd-divider"></div>
-    <div class="rd-body">${bodyHtml}</div>
+    <div class="rd-main">
+      <div class="rd-title">${escapeHtml(video.title || video.id)}</div>
+      <div class="rd-byline-row">
+        <div class="rd-byline">${byline}</div>
+        <div class="rd-byline-actions">
+          <button type="button" class="rd-translate-btn" id="rd-translate-btn">Translate</button>
+          <div class="rd-open-video" id="rd-open-video">
+            Open video
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F2B33D" stroke-width="2" stroke-linecap="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
+          </div>
+        </div>
+      </div>
+      <div class="rd-divider"></div>
+      <div class="rd-body">${bodyHtml}</div>
+    </div>
+    <div class="rd-notes-col">${notesHtml}</div>
   `;
+
+  document.getElementById('rd-open-video').onclick = () => openVideoAt(video.id, null);
+  const translateBtn = document.getElementById('rd-translate-btn');
+  translateBtn.textContent = translationsShown ? 'Hide translation' : 'Translate';
+  translateBtn.onclick = () => onTranslateClick(translateBtn, sentenceItems);
+
+  document.getElementById('rd-article').querySelectorAll('.rd-notes-col .rd-note').forEach((el) => {
+    el.addEventListener('click', () => {
+      const segWrap = document.querySelector(`.rd-seg-wrap[data-bookmark-id="${el.dataset.bookmarkId}"]`);
+      if (segWrap) openNotePopover(segWrap);
+    });
+  });
+
+  positionNotes();
+}
+
+async function onTranslateClick(btn, sentenceItems) {
+  if (translationsShown) {
+    translationsShown = false;
+    renderReading();
+    return;
+  }
+  if (translationsByStart.size > 0) {
+    translationsShown = true;
+    renderReading();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Translating…';
+  const videoId = readingVideoId;
+  try {
+    const res = await fetch(`${BACKEND}/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_id: videoId, items: sentenceItems }),
+    });
+    if (readingVideoId !== videoId || !res.ok) {
+      btn.disabled = false;
+      btn.textContent = 'Translate';
+      return;
+    }
+    const data = await res.json();
+    for (const item of data.items) translationsByStart.set(item.start, item.translated_text);
+    translationsShown = true;
+    btn.disabled = false;
+    renderReading();
+  } catch (_e) {
+    btn.disabled = false;
+    btn.textContent = 'Translate';
+  }
+}
+
+// Aligns each note in the right column with the vertical position of the
+// sentence it belongs to, Google-Docs-comment style, while keeping a
+// minimum gap between consecutive notes so they never overlap.
+function positionNotes() {
+  const article = document.getElementById('rd-article');
+  const main = article.querySelector('.rd-main');
+  const notesCol = article.querySelector('.rd-notes-col');
+  const noteEls = Array.from(notesCol.querySelectorAll('.rd-note'));
+  if (noteEls.length === 0) return;
+
+  const mainTop = main.getBoundingClientRect().top;
+  let prevBottom = 0;
+  noteEls.forEach((noteEl) => {
+    const segWrap = document.querySelector(`.rd-seg-wrap[data-bookmark-id="${noteEl.dataset.bookmarkId}"]`);
+    if (!segWrap) return;
+    const segTop = segWrap.getBoundingClientRect().top - mainTop;
+    const top = Math.max(segTop, prevBottom + 10);
+    noteEl.style.top = `${top}px`;
+    prevBottom = top + noteEl.offsetHeight;
+  });
 }
 
 function closeAnyPopover() {
+  const hadOne = document.querySelector('.rd-popover');
   document.querySelectorAll('.rd-popover').forEach((el) => el.remove());
+  if (hadOne) positionNotes(); // removing it shifts the paragraphs below back up
 }
 
 function openNotePopover(segWrap) {
@@ -372,6 +494,7 @@ function openNotePopover(segWrap) {
     </div>
   `;
   segWrap.closest('p').after(popover);
+  positionNotes(); // inserting it pushes the paragraphs below down
 
   const textarea = popover.querySelector('.rd-popover-input');
   textarea.focus();
@@ -425,9 +548,15 @@ async function refreshBookmarks(videoId) {
 }
 
 document.getElementById('rd-article').addEventListener('click', (e) => {
+  const paraTime = e.target.closest('.rd-para-time');
+  if (paraTime) {
+    openVideoAt(readingVideo.id, Number(paraTime.dataset.start));
+    return;
+  }
   const icon = e.target.closest('.rd-bm-icon');
-  if (!icon) return;
-  openNotePopover(icon.closest('.rd-seg-wrap'));
+  if (icon) {
+    openNotePopover(icon.closest('.rd-seg-wrap'));
+  }
 });
 
 document.getElementById('rd-back').addEventListener('click', () => {

@@ -47,6 +47,19 @@ async function deleteBookmark(bookmarkId) {
   return { ok: true };
 }
 
+async function translate(videoId, items) {
+  const res = await fetch(`${BACKEND}/translate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_id: videoId, items }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, error: body.detail || `Backend error ${res.status}` };
+  }
+  return { ok: true, data: await res.json() };
+}
+
 async function markViewed(videoId) {
   const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/viewed`, {
     method: 'POST',
@@ -74,6 +87,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     message.type === 'CREATE_BOOKMARK' ? createBookmark(message.videoId, message.timestampSeconds, message.comment) :
     message.type === 'DELETE_BOOKMARK' ? deleteBookmark(message.bookmarkId) :
     message.type === 'MARK_VIEWED' ? markViewed(message.videoId) :
+    message.type === 'TRANSLATE' ? translate(message.videoId, message.items) :
     null;
 
   if (!handler) return false;

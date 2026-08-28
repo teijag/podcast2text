@@ -35,6 +35,19 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_bookmarks_video ON bookmarks(video_id);
+
+CREATE TABLE IF NOT EXISTS translations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    start_seconds REAL NOT NULL,
+    source_lang TEXT NOT NULL,
+    target_lang TEXT NOT NULL,
+    source_text TEXT NOT NULL,
+    translated_text TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(video_id, start_seconds, target_lang)
+);
+CREATE INDEX IF NOT EXISTS idx_translations_video ON translations(video_id);
 """
 
 

@@ -124,6 +124,15 @@ def list_videos() -> list[VideoSummary]:
     ]
 
 
+@app.delete("/videos/{video_id}")
+def delete_video(video_id: str) -> dict:
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown video")
+    return {"status": "ok"}
+
+
 @app.post("/videos/{video_id}/viewed")
 def mark_video_viewed(video_id: str) -> dict:
     with get_connection() as conn:
@@ -212,7 +221,10 @@ def translate(req: TranslateRequest) -> TranslateResponse:
 
     to_translate = [item for item in req.items if item.start not in cache]
     if to_translate:
-        results = translator.translate_batch([item.text for item in to_translate])
+        try:
+            results = translator.translate_batch([item.text for item in to_translate])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Translation failed: {exc}")
         with get_connection() as conn:
             for item, (src_lang, tgt_lang, translated) in zip(to_translate, results):
                 conn.execute(

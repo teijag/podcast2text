@@ -30,6 +30,13 @@ const BOOKMARK_ICON_FILLED = `
   </svg>
 `;
 
+const TRASH_ICON = `
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+  </svg>
+`;
+
 const THUMB_GRADIENTS = [
   'linear-gradient(135deg,#3a2f18,#171717)',
   'linear-gradient(135deg,#1a2a30,#141414)',
@@ -263,6 +270,7 @@ function renderGrid() {
           <div class="lib-card-thumb" style="background:${gradient}">
             <img class="lib-card-thumb-img" src="https://img.youtube.com/vi/${v.id}/hqdefault.jpg" alt="" loading="lazy" onerror="this.remove()">
             ${PLAY_ICON}
+            <button type="button" class="lib-card-delete" title="Remove from library">${TRASH_ICON}</button>
             ${bookmarkBadge}
             ${durationBadge}
           </div>
@@ -280,7 +288,28 @@ function renderGrid() {
 
   grid.querySelectorAll('.lib-card').forEach((card) => {
     card.addEventListener('click', () => openReading(card.dataset.videoId));
+    card.querySelector('.lib-card-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      onDeleteVideo(card.dataset.videoId);
+    });
   });
+}
+
+async function onDeleteVideo(videoId) {
+  const video = videos.find((v) => v.id === videoId);
+  const title = video ? video.title || video.id : videoId;
+  if (!confirm(`Remove "${title}" from your library? This deletes its transcript, bookmarks, and notes.`)) return;
+
+  try {
+    const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`Backend error ${res.status}`);
+  } catch (_e) {
+    alert('Could not remove this video. Is the local backend running?');
+    return;
+  }
+  videos = videos.filter((v) => v.id !== videoId);
+  bookmarksByVideo.delete(videoId);
+  renderGrid();
 }
 
 function showPage(pageId) {
@@ -295,7 +324,14 @@ async function openReading(videoId) {
   const article = document.getElementById('rd-article');
   article.innerHTML = `<div class="lib-empty">Loading transcript&hellip;</div>`;
 
-  const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/transcript`);
+  let res;
+  try {
+    res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/transcript`);
+  } catch (_e) {
+    if (readingVideoId !== videoId) return; // navigated away while loading
+    article.innerHTML = `<div class="lib-empty lib-error">Could not reach the local backend. Is it running?</div>`;
+    return;
+  }
   if (readingVideoId !== videoId) return; // navigated away while loading
   if (!res.ok) {
     article.innerHTML = `<div class="lib-empty lib-error">Could not load this transcript.</div>`;
@@ -509,36 +545,53 @@ function openNotePopover(segWrap) {
 
 async function saveNote(segWrap, comment, bookmarkId) {
   const videoId = readingVideoId;
-  const res = bookmarkId
-    ? await fetch(`${BACKEND}/bookmarks/${bookmarkId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment: comment || null }),
-      })
-    : await fetch(`${BACKEND}/bookmarks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_id: videoId,
-          timestamp_seconds: Number(segWrap.dataset.start),
-          comment: comment || null,
-        }),
-      });
+  try {
+    const res = bookmarkId
+      ? await fetch(`${BACKEND}/bookmarks/${bookmarkId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ comment: comment || null }),
+        })
+      : await fetch(`${BACKEND}/bookmarks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            video_id: videoId,
+            timestamp_seconds: Number(segWrap.dataset.start),
+            comment: comment || null,
+          }),
+        });
+    if (!res.ok) throw new Error(`Backend error ${res.status}`);
+  } catch (_e) {
+    // Leave the popover open so the typed comment isn't lost on failure.
+    alert('Could not save this note. Is the local backend running?');
+    return;
+  }
   closeAnyPopover();
-  if (!res.ok) return;
   await refreshBookmarks(videoId);
 }
 
 async function deleteNote(bookmarkId) {
   const videoId = readingVideoId;
-  await fetch(`${BACKEND}/bookmarks/${bookmarkId}`, { method: 'DELETE' });
+  try {
+    const res = await fetch(`${BACKEND}/bookmarks/${bookmarkId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`Backend error ${res.status}`);
+  } catch (_e) {
+    alert('Could not delete this note. Is the local backend running?');
+    return;
+  }
   closeAnyPopover();
   await refreshBookmarks(videoId);
 }
 
 async function refreshBookmarks(videoId) {
-  const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/bookmarks`);
-  const bookmarks = res.ok ? await res.json() : [];
+  let bookmarks;
+  try {
+    const res = await fetch(`${BACKEND}/videos/${encodeURIComponent(videoId)}/bookmarks`);
+    bookmarks = res.ok ? await res.json() : bookmarksByVideo.get(videoId) || [];
+  } catch (_e) {
+    return; // keep whatever's already shown rather than clobbering it
+  }
   bookmarksByVideo.set(videoId, bookmarks);
 
   const video = videos.find((v) => v.id === videoId);

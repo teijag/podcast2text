@@ -194,24 +194,31 @@ function getVideoId() {
 }
 
 function fireAndForget(message) {
-  // No callback registered, so there's nothing for Chrome to complain about
-  // if this tab navigates away before the background script responds.
+  // With no callback, sendMessage returns a promise: a synchronous throw
+  // (chrome.runtime gone entirely) is caught below, but an invalidated
+  // extension context (e.g. reload while this tab is still open) instead
+  // rejects that promise, which needs its own .catch to avoid an unhandled
+  // rejection — harmless either way, there's nothing to recover here.
   try {
-    chrome.runtime.sendMessage(message);
+    Promise.resolve(chrome.runtime.sendMessage(message)).catch(() => {});
   } catch (_e) {
-    // Extension context can be invalidated (e.g. reload) mid-navigation; harmless here.
+    // Synchronous throw when chrome.runtime itself is gone.
   }
 }
 
 function backendMessage(message) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (chrome.runtime.lastError) {
-        resolve({ ok: false, error: chrome.runtime.lastError.message });
-        return;
-      }
-      resolve(response);
-    });
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve(response);
+      });
+    } catch (e) {
+      resolve({ ok: false, error: String(e) });
+    }
   });
 }
 

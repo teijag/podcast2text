@@ -48,6 +48,19 @@ CREATE TABLE IF NOT EXISTS translations (
     UNIQUE(video_id, start_seconds, target_lang)
 );
 CREATE INDEX IF NOT EXISTS idx_translations_video ON translations(video_id);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS transcript_fts USING fts5(
+    text, video_id UNINDEXED, start_seconds UNINDEXED
+);
+
+CREATE TRIGGER IF NOT EXISTS transcript_segments_ai AFTER INSERT ON transcript_segments BEGIN
+    INSERT INTO transcript_fts(rowid, text, video_id, start_seconds)
+    VALUES (new.id, new.text, new.video_id, new.start_seconds);
+END;
+
+CREATE TRIGGER IF NOT EXISTS transcript_segments_ad AFTER DELETE ON transcript_segments BEGIN
+    DELETE FROM transcript_fts WHERE rowid = old.id;
+END;
 """
 
 
@@ -63,6 +76,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
     if "last_viewed_at" not in columns:
         conn.execute("ALTER TABLE videos ADD COLUMN last_viewed_at TEXT")
+
+    # Backfill transcript_fts for segments inserted before the FTS table
+    # existed — the insert trigger only covers segments going forward.
+    conn.execute(
+        """
+        INSERT INTO transcript_fts(rowid, text, video_id, start_seconds)
+        SELECT id, text, video_id, start_seconds FROM transcript_segments
+        WHERE id NOT IN (SELECT rowid FROM transcript_fts)
+        """
+    )
 
 
 @contextmanager

@@ -147,6 +147,9 @@ function groupIntoParagraphs(sentences) {
 let videos = [];
 let bookmarksByVideo = new Map(); // videoId -> bookmarks[]
 let searchQuery = '';
+// videoId -> snippet, from the last server-side transcript search.
+let transcriptMatches = new Map();
+let searchDebounceTimer = null;
 let activeFilter = 'all'; // 'all' | 'unwatched'
 let readingVideoId = null;
 let readingVideo = null;
@@ -203,12 +206,26 @@ async function loadLibrary() {
 
 function matchesSearch(video) {
   if (!searchQuery) return true;
+  if (transcriptMatches.has(video.id)) return true;
   const haystack = [video.title, video.channel]
     .concat((bookmarksByVideo.get(video.id) || []).map((b) => b.comment))
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
   return haystack.includes(searchQuery);
+}
+
+async function searchTranscripts(query) {
+  try {
+    const res = await fetch(`${BACKEND}/search?q=${encodeURIComponent(query)}`);
+    if (query !== searchQuery || !res.ok) return; // stale or failed — ignore
+    const data = await res.json();
+    transcriptMatches = new Map(data.results.map((r) => [r.video_id, r.snippet]));
+  } catch (_e) {
+    // Transcript search is a bonus on top of the instant client-side
+    // filter, which still works — nothing to surface here.
+  }
+  if (query === searchQuery) renderGrid();
 }
 
 function matchesFilter(video) {
@@ -265,6 +282,8 @@ function renderGrid() {
         v.duration_seconds != null
           ? `<div class="lib-card-duration">${formatTimestamp(v.duration_seconds)}</div>`
           : '';
+      const snippet = transcriptMatches.get(v.id);
+      const snippetHtml = snippet ? `<div class="lib-card-snippet">${escapeHtml(snippet)}</div>` : '';
       return `
         <div class="lib-card" data-video-id="${v.id}">
           <div class="lib-card-thumb" style="background:${gradient}">
@@ -280,6 +299,7 @@ function renderGrid() {
             <div class="lib-card-meta">Transcribed ${formatDate(v.created_at)} &middot; ${
               v.bookmark_count > 0 ? `${v.bookmark_count} bookmark${v.bookmark_count === 1 ? '' : 's'}` : 'no bookmarks'
             }</div>
+            ${snippetHtml}
           </div>
         </div>
       `;
@@ -343,6 +363,44 @@ async function openReading(videoId) {
   translationsByStart = new Map();
   translationsShown = false;
   renderReading();
+}
+
+function buildMarkdown(video, paragraphs, bookmarks) {
+  const lines = [`# ${video.title || video.id}`, ''];
+  const bylineParts = [video.channel, `[Watch on YouTube](https://www.youtube.com/watch?v=${video.id})`].filter(Boolean);
+  lines.push(bylineParts.join(' · '), '');
+
+  for (const group of paragraphs) {
+    let text = '';
+    group.forEach((sent, i) => {
+      const joiner = i > 0 && !(isCJK(group[i - 1].text.slice(-1)) || isCJK(sent.text.charAt(0))) ? ' ' : '';
+      text += joiner + sent.text;
+    });
+    lines.push(`${formatTimestamp(group[0].start)} ${text}`, '');
+  }
+
+  const commented = bookmarks.filter((bm) => bm.comment);
+  if (commented.length > 0) {
+    lines.push('## Notes', '');
+    for (const bm of commented) {
+      lines.push(`- **${formatTimestamp(bm.timestamp_seconds)}** — ${bm.comment}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function exportMarkdown(video, paragraphs, bookmarks) {
+  const markdown = buildMarkdown(video, paragraphs, bookmarks);
+  const blob = new Blob([markdown], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(video.title || video.id).replace(/[\\/:*?"<>|]/g, '_')}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function renderReading() {
@@ -420,6 +478,7 @@ function renderReading() {
         <div class="rd-byline">${byline}</div>
         <div class="rd-byline-actions">
           <button type="button" class="rd-translate-btn" id="rd-translate-btn">Translate</button>
+          <button type="button" class="rd-export-btn" id="rd-export-btn">Export</button>
           <div class="rd-open-video" id="rd-open-video">
             Open video
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F2B33D" stroke-width="2" stroke-linecap="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
@@ -436,6 +495,7 @@ function renderReading() {
   const translateBtn = document.getElementById('rd-translate-btn');
   translateBtn.textContent = translationsShown ? 'Hide translation' : 'Translate';
   translateBtn.onclick = () => onTranslateClick(translateBtn, sentenceItems);
+  document.getElementById('rd-export-btn').onclick = () => exportMarkdown(video, paragraphs, bookmarks);
 
   document.getElementById('rd-article').querySelectorAll('.rd-notes-col .rd-note').forEach((el) => {
     el.addEventListener('click', () => {
@@ -524,7 +584,10 @@ function openNotePopover(segWrap) {
   popover.innerHTML = `
     <textarea class="rd-popover-input" placeholder="What's worth remembering here?">${escapeHtml(existing?.comment || '')}</textarea>
     <div class="rd-popover-actions">
-      ${bookmarkId ? '<button type="button" class="rd-popover-delete">Delete</button>' : ''}
+      <div class="rd-popover-actions-left">
+        ${bookmarkId ? '<button type="button" class="rd-popover-share">Share</button>' : ''}
+        ${bookmarkId ? '<button type="button" class="rd-popover-delete">Delete</button>' : ''}
+      </div>
       <button type="button" class="rd-popover-cancel">Cancel</button>
       <button type="button" class="rd-popover-save">Save</button>
     </div>
@@ -541,6 +604,61 @@ function openNotePopover(segWrap) {
     .addEventListener('click', () => saveNote(segWrap, textarea.value.trim(), bookmarkId));
   const deleteBtn = popover.querySelector('.rd-popover-delete');
   if (deleteBtn) deleteBtn.addEventListener('click', () => deleteNote(bookmarkId));
+  const shareBtn = popover.querySelector('.rd-popover-share');
+  if (shareBtn) shareBtn.addEventListener('click', () => onShareClick(segWrap, existing?.comment || '', shareBtn));
+}
+
+function containsCJK(text) {
+  return /[一-鿿]/.test(text);
+}
+
+async function onShareClick(segWrap, comment, btn) {
+  const videoId = readingVideo.id;
+  const start = Number(segWrap.dataset.start);
+  const originalText = segWrap.querySelector('.rd-highlight')?.textContent || '';
+  let transcriptLine = originalText;
+
+  if (containsCJK(originalText)) {
+    const cached = translationsByStart.get(start);
+    if (cached) {
+      transcriptLine = cached;
+    } else {
+      const prevLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Translating…';
+      try {
+        const res = await fetch(`${BACKEND}/translate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_id: videoId, items: [{ start, text: originalText }] }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          transcriptLine = data.items[0]?.translated_text || originalText;
+        }
+      } catch (_e) {
+        // fall back to the original (untranslated) text below
+      }
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+    }
+  }
+
+  const link = `https://youtu.be/${videoId}?t=${Math.floor(start)}s`;
+  const parts = [`This is interesting - ${link}`, `"${transcriptLine}"`];
+  if (comment) parts.push(comment);
+  const text = parts.join('\n\n');
+
+  try {
+    await navigator.clipboard.writeText(text);
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => {
+      btn.textContent = original;
+    }, 1500);
+  } catch (_e) {
+    alert('Could not copy to clipboard.');
+  }
 }
 
 async function saveNote(segWrap, comment, bookmarkId) {
@@ -619,7 +737,13 @@ document.getElementById('rd-back').addEventListener('click', () => {
 
 document.getElementById('lib-search-input').addEventListener('input', (e) => {
   searchQuery = e.target.value.trim().toLowerCase();
-  renderGrid();
+  if (!searchQuery) transcriptMatches = new Map();
+  renderGrid(); // instant title/channel/comment filter
+
+  clearTimeout(searchDebounceTimer);
+  if (searchQuery) {
+    searchDebounceTimer = setTimeout(() => searchTranscripts(searchQuery), 250);
+  }
 });
 
 loadLibrary().catch((err) => {

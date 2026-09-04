@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,6 +11,8 @@ from .schemas import (
     Bookmark,
     BookmarkCreate,
     BookmarkUpdate,
+    SearchResponse,
+    SearchResult,
     TranscribeRequest,
     TranslatedSegment,
     TranslateRequest,
@@ -122,6 +126,50 @@ def list_videos() -> list[VideoSummary]:
         )
         for r in rows
     ]
+
+
+@app.get("/search", response_model=SearchResponse)
+def search(q: str) -> SearchResponse:
+    q = q.strip()
+    if not q:
+        return SearchResponse(results=[])
+
+    # Treat the whole input as a literal phrase rather than FTS5 query
+    # syntax, so characters like `-` or `"` in the user's query don't throw
+    # a MATCH syntax error.
+    phrase = '"' + q.replace('"', '""') + '"'
+
+    with get_connection() as conn:
+        try:
+            rows = conn.execute(
+                """
+                SELECT
+                    tf.video_id AS video_id,
+                    v.title AS video_title,
+                    tf.start_seconds AS start_seconds,
+                    snippet(transcript_fts, 0, '', '', '…', 12) AS snippet
+                FROM transcript_fts tf
+                JOIN videos v ON v.id = tf.video_id
+                WHERE transcript_fts MATCH ? AND v.status = 'done'
+                ORDER BY rank
+                LIMIT 50
+                """,
+                (phrase,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return SearchResponse(results=[])
+
+    return SearchResponse(
+        results=[
+            SearchResult(
+                video_id=r["video_id"],
+                video_title=r["video_title"],
+                start_seconds=r["start_seconds"],
+                snippet=r["snippet"],
+            )
+            for r in rows
+        ]
+    )
 
 
 @app.delete("/videos/{video_id}")

@@ -217,6 +217,16 @@ body {
   margin-top: 4px;
 }
 
+.lib-card-snippet {
+  font-size: 11px;
+  font-style: italic;
+  color: #8a5a1a;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lib-empty {
   color: #6b5d47;
   font-size: 13px;
@@ -285,6 +295,22 @@ body {
 .rd-translate-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.rd-export-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #ddd0ad;
+  background: none;
+  color: #6b5d47;
+  font-family: "Roboto", sans-serif;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.rd-export-btn:hover {
+  color: #2e2418;
+  border-color: #c9b78a;
 }
 
 .rd-para-translation {
@@ -496,9 +522,16 @@ body {
   margin-top: 10px;
 }
 
+.rd-popover-actions-left {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
+}
+
 .rd-popover-cancel,
 .rd-popover-save,
-.rd-popover-delete {
+.rd-popover-delete,
+.rd-popover-share {
   border: none;
   border-radius: 999px;
   padding: 7px 14px;
@@ -507,17 +540,22 @@ body {
   cursor: pointer;
 }
 
-.rd-popover-cancel {
+.rd-popover-cancel,
+.rd-popover-share {
   background: transparent;
   border: 1px solid #d3c299;
   color: #6b5d47;
+}
+
+.rd-popover-share:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .rd-popover-delete {
   background: transparent;
   border: 1px solid #d9b8ac;
   color: #a63d2f;
-  margin-right: auto;
 }
 
 .rd-popover-save {

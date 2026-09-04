@@ -74,3 +74,14 @@ class TranslatedSegment(BaseModel):
 
 class TranslateResponse(BaseModel):
     items: list[TranslatedSegment]
+
+
+class SearchResult(BaseModel):
+    video_id: str
+    video_title: Optional[str]
+    start_seconds: float
+    snippet: str
+
+
+class SearchResponse(BaseModel):
+    results: list[SearchResult]

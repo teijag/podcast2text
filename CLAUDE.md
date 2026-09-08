@@ -15,6 +15,11 @@ was considered early on and deliberately left out of scope — YouTube only.
   - `yt-dlp` downloads audio for a YouTube URL.
   - `faster-whisper` transcribes it locally into timestamped segments.
   - `translator.py` handles local EN↔ZH translation via NLLB-200 + CTranslate2.
+  - Full-text transcript search uses a SQLite FTS5 virtual table
+    (`transcript_fts`), kept in sync with `transcript_segments` by triggers
+    in `db.py` — not automatic. A schema change to `transcript_segments`
+    (e.g. a new column, or the way its rows are inserted) needs matching
+    trigger updates or FTS5 silently drifts out of sync.
   - Data lives in `data/podcast2text.db` (SQLite) and `data/audio/` (downloaded
     audio cache) — both git-ignored.
 - **Frontend**: Chrome extension (Manifest V3). A content script injects a

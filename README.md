@@ -11,10 +11,13 @@ machine: no cloud APIs, no API keys, no data leaving localhost.
   auto-scrolls and highlights in sync with video playback.
 - **Bookmarks with comments** — mark a moment in the transcript and attach a
   note to it, from the sidebar or the library.
-- **Library** — a grid of every video you've transcribed, searchable by
-  title/channel/note text, filterable by unwatched, sorted by most recently
-  transcribed. Delete a video to remove its transcript, bookmarks, and
-  translations.
+- **Library** — a grid of every video you've transcribed, filterable by
+  unwatched, sorted by most recently transcribed. Delete a video to remove
+  its transcript, bookmarks, and translations.
+- **Full-text search** — the library search box matches title, channel, and
+  notes instantly, and also searches the full spoken content of every
+  transcript (SQLite FTS5), showing a snippet on cards that only match by
+  what was said, not the title.
 - **Reading view** — a full article-style view of a video's transcript,
   grouped into paragraphs, with bookmarked sentences highlighted and their
   notes laid out in a Google-Docs-style right-hand column. Click a paragraph
@@ -24,6 +27,11 @@ machine: no cloud APIs, no API keys, no data leaving localhost.
   each paragraph (library), powered by a local NLLB-200 model. Translations
   are cached, so translating once makes every other view of that video
   instant.
+- **Export** — download a video's transcript and notes as a Markdown file
+  from the reading view, or copy a single bookmark as shareable text (a
+  timestamped link, the transcript line, and your comment) straight to the
+  clipboard. The shared transcript line is always English, translating on
+  the fly if the sentence itself is Chinese.
 
 ## How it works
 
